@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "code-graph": {
+      "command": "node",
+      "args": ["/ABSOLUTE/PATH/TO/dist/mcp/server.js"],
+      "environment": {
+        "NABI_GRAPH_JSON": "/ABSOLUTE/PATH/TO/data/graph.json"
+      }
+    }
+  }
+}

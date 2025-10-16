@@ -1,0 +1,27 @@
+{
+  "name": "nabi-codegraph-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "dev:server": "bun src/mcp/server.ts",
+    "build": "bun build ./src/mcp/server.ts --target bun --outdir ./dist/mcp --minify",
+    "start": "bun dist/mcp/server.ts",
+    "ingest": "bun src/ingest/make_graph.ts",
+    "impact": "bun src/scripts/diff_impact.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.2.0",
+    "globby": "^14.0.2",
+    "minimist": "^1.2.8",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/minimist": "^1.2.5",
+    "@types/node": "^24.7.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
