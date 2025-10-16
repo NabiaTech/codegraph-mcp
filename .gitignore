@@ -6,3 +6,15 @@ data/*.sqlite3
 data/*.json
 data/*.jsonl
 .DS_Store
+
+# Environment files
+.env
+.env.local
+!.env.example
+
+# Python package metadata
+*.egg-info/
+__pycache__/
+
+# Temporary analysis
+tmp-analysis-from-claude/
