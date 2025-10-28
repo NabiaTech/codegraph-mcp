@@ -1,0 +1,85 @@
+services:
+  codegraph-sse:
+    build:
+      context: .
+      dockerfile: Dockerfile.sse
+    container_name: codegraph-mcp-sse
+    ports:
+      - "8050:8050"
+    environment:
+      # Federation configuration
+      CODEGRAPH_FEDERATION_ENABLED: "${FEDERATION_ENABLED:-true}"
+      CODEGRAPH_AGENT_ID: "${AGENT_ID:-codegraph-sse-docker}"
+      CODEGRAPH_LOKI_URL: "${LOKI_URL:-http://memchain-loki:3100}"
+      CODEGRAPH_ENVIRONMENT: "${ENVIRONMENT:-production}"
+
+      # Server configuration
+      CODEGRAPH_HOST: "0.0.0.0"
+      CODEGRAPH_PORT: "8050"
+      CODEGRAPH_LOG_LEVEL: "${LOG_LEVEL:-info}"
+
+      # XDG-compliant paths (container perspective)
+      CODEGRAPH_STATE_DIR: "/app/state"
+      CODEGRAPH_GRAPHS_DIR: "/app/state/graphs"
+      CODEGRAPH_CACHE_DIR: "/app/state/cache"
+      CODEGRAPH_LOGS_DIR: "/app/logs"
+
+      # MCP backend configuration
+      CODEGRAPH_MCP_GRAPH_JSON: "/app/state/graph.json"
+      CODEGRAPH_MCP_ROOT: "/app/src"
+
+    volumes:
+      # Persistent graph storage
+      - codegraph-state:/app/state
+      - codegraph-logs:/app/logs
+
+      # XDG-compliant host paths (mounted read-write)
+      - ${XDG_DATA_HOME:-$HOME/.local/share}/nabi/codegraph:/app/state
+      - ${XDG_DATA_HOME:-$HOME/.local/share}/nabi/logs:/app/logs
+      - ${NABI_RUNTIME_DIR:-$HOME/.nabi}/federation:/app/federation:ro
+
+      # Optional: Syncthing sync for backup
+      - ${SYNCTHING_PATH:-$HOME/Sync}:/app/sync:ro
+
+      # TypeScript source (for ingest)
+      - ./src:/app/src:ro
+      - ./py:/app/src/py:ro
+      - ./package.json:/app/src/package.json:ro
+      - ./bun.lockb:/app/src/bun.lockb:ro
+
+    restart: unless-stopped
+
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8050/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "service=codegraph-sse"
+
+    networks:
+      - nabi-net
+
+    # NOTE: depends_on can't reference services from other compose files.
+    # Service discovery works via DNS: http://memchain-loki:3100
+    # Ensure memchain is running on same nabi-net before starting codegraph-sse.
+
+    # Resource limits (optional, adjust based on your system)
+    # mem_limit: 512m
+    # cpus: 1
+
+volumes:
+  codegraph-state:
+    driver: local
+  codegraph-logs:
+    driver: local
+
+networks:
+  nabi-net:
+    external: true

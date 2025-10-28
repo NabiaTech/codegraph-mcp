@@ -1,0 +1,63 @@
+# Multi-stage build for codegraph-sse service
+# Based on memchain-sse pattern
+
+# Stage 1: Build base with bun (for ingest, which is TypeScript)
+FROM node:20-alpine AS build-ts
+
+WORKDIR /app/src
+
+# Copy TypeScript/bun parts only (ingest logic)
+COPY src/ingest/ ./ingest/
+COPY src/util/ ./util/
+COPY src/mcp/types.ts ./mcp/
+COPY py/ ./py/
+COPY package.json bun.lockb ./
+COPY tsconfig.json ./
+
+# Install bun
+RUN npm install -g bun
+
+# Install dependencies
+RUN bun install
+
+# Build TypeScript
+RUN bun run build
+
+# Stage 2: Python runtime
+FROM python:3.13-slim
+
+# Install uv for fast dependency management
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+# Install bun runtime (needed for ingest CLI)
+COPY --from=build-ts /usr/local/bin/bun /usr/local/bin/bun
+
+WORKDIR /app
+
+# Copy project files
+COPY pyproject.toml ./
+COPY src/codegraph_sse/ ./src/codegraph_sse/
+
+# Copy prebuilt TypeScript/ingest
+COPY --from=build-ts /app/src/dist/ ./src/dist/
+COPY --from=build-ts /app/src/ingest/ ./src/ingest/
+COPY --from=build-ts /app/src/util/ ./src/util/
+COPY --from=build-ts /app/src/py/ ./src/py/
+COPY --from=build-ts /app/src/package.json ./src/
+COPY --from=build-ts /app/src/bun.lockb ./src/
+
+# Install Python dependencies
+RUN uv pip install --system -e .
+
+# Create necessary directories
+RUN mkdir -p /app/logs /app/federation /app/sync /app/data
+
+# Expose SSE server port
+EXPOSE 8050
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+  CMD python -c "import requests; requests.get('http://localhost:8050/health')" || exit 1
+
+# Run codegraph-sse service
+CMD ["codegraph-sse", "--host", "0.0.0.0", "--port", "8050"]
