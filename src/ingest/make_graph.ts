@@ -13,6 +13,29 @@ const outDir = path.resolve(String(args.output ?? process.env.OUTPUT ?? './data'
 const outJson = path.join(outDir, 'graph.json');
 const PYTHON_BIN = process.env.PYTHON_BIN || 'python3';
 
+// Print usage info
+if (args.help || args.h) {
+  console.error(`
+Usage: ingest [options]
+
+Options:
+  --target <path>    Codebase to index (default: ./example)
+  --output <path>    Output directory for graph.json (default: ./data)
+  --help, -h         Show this help message
+
+Environment variables:
+  TARGET             Override default target
+  OUTPUT             Override default output directory
+  PYTHON_BIN         Python interpreter (default: python3)
+
+Examples:
+  bun run ingest -- --target ~/nabia/memchain
+  bun run ingest -- --target ~/nabia/memchain --output ~/graphs/memchain
+  bun run ingest -- --target ./src --output /tmp/graph
+  `);
+  process.exit(0);
+}
+
 function uniq<T>(arr: T[], key: (t: T) => string): T[] {
   const m = new Map<string, T>();
   for (const x of arr) {
