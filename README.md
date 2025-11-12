@@ -1,154 +1,197 @@
-# nabi-codegraph-mcp — Minimal Code Graph + MCP Server (TS + Python)
+# nabi-codegraph-mcp — Code Graph MCP Server
 
-This is a **self-contained starter** that builds a lightweight code graph over **TypeScript** and **Python**, then exposes it via an **MCP server** so agentic clients (Claude Desktop, Cursor, Copilot Studio, OpenAI Agents, Azure) can query it.
+A lightweight code graph service with MCP (Model Context Protocol) interface for analyzing codebases and understanding dependencies.
 
-**Design goals**: tiny, pragmatic, easy to extend. No heavyweight LSIF/SCIP indexers required to get started (though you can integrate them later).
+## 🎯 Overview
 
----
+This MCP server provides programmatic access to code analysis capabilities, allowing agents and tools to:
 
-## What you get
+- **Index codebases** into persistent graphs stored in NABI state
+- **Search symbols** across multiple programming languages
+- **Analyze dependencies** and relationships between code elements
+- **Assess change impact** from diffs and patches
 
-- **Ingestion (no build required):**
-  - **TypeScript** parsed using the official `typescript` compiler API.
-  - **Python** parsed using the standard library `ast` module.
-  - We extract symbols (functions, classes, methods, variables, per-file modules) and edges (`import`, `call`, `member_of`, `defines`).
+## 🏗️ Architecture
 
-- **Graph format:**
-  - Simple JSON file at `./data/graph.json` with `symbols[]` and `edges[]`.
-  - Easy to swap for SQLite or SCIP later.
+### Data Storage
+- **Graphs stored in**: `~/.local/state/nabi/codegraph/graphs/{id}/graph.json`
+- **Registry**: `~/.local/state/nabi/codegraph/registry.json`
+- **XDG compliant**: Follows NABI state directory conventions
 
-- **MCP Server (`code-graph`):**
-  - `graph.resolve_symbol({ q })` → fuzzy lookup of symbols by name.
-  - `graph.references({ id })` → inbound edges (who calls/imports this symbol).
-  - `graph.related({ id, k })` → k neighbors (imports/calls).
-  - `graph.impact_from_diff({ patch })` → changed files + 1‑hop neighbor impact set.
-  - **Resource**: `code://file/{path}?s=..&e=..` → stream code snippets for context windows.
+### Supported Languages
+- **Python** (primary focus for NABI kernel)
+- **TypeScript** (for tooling and web components)
+- **Future**: Rust, Go, and other languages
 
-- **Example repo** to test ingestion (`./example` with TS + Py files).
+### MCP Tools
+- **`graph.resolve_symbol({ q })`** → fuzzy lookup of symbols by name
+- **`graph.references({ id })`** → inbound edges (who calls/imports this symbol)
+- **`graph.related({ id, k })`** → k neighbors (imports/calls)
+- **`graph.impact_from_diff({ patch })`** → changed files + 1-hop neighbor impact set
+- **`analyze_parallel_streams({ streams, context })`** → analyze parallel workstreams and generate visual synthesis
+- **`graph_ingest({ target, id })`** → index a codebase and register the graph
+- **`graph_list_available()`** → list all available indexed graphs
+- **`graph_set_active({ id_or_path })`** → switch to a different graph
+- **Resource**: `code://file/{path}?s=..&e=..` → stream code snippets for context windows
 
----
+## 🛠️ MCP Tools
 
-## Prereqs
+### Graph Management
+- **`graph_ingest`** - Index a codebase and register the graph
+  - Input: `target` (directory path), optional `id`
+  - Creates persistent graph in NABI state directory
+  - Automatically switches to new graph
 
-- **Node.js 20+** (recommended LTS).
-- **Python 3.10+** (standard library only).
+- **`graph_list_available`** - List all available indexed graphs
+  - Returns registry of all indexed codebases with metadata
 
-> Tip: This repo avoids native DB bindings for maximum portability. The graph is stored in JSON and loaded into memory by the server.
+- **`graph_set_active`** - Switch to a different graph
+  - Input: `id_or_path` (graph ID or path)
+  - Switches active graph for all subsequent queries
 
----
+### Code Analysis
+- **`graph_resolve_symbol`** - Fuzzy search for symbols
+  - Input: `q` (search query)
+  - Returns matching symbols with file locations and ranges
 
-## Quick start (5 minutes)
+- **`graph_references`** - Find inbound references to a symbol
+  - Input: `id` (symbol ID)
+  - Shows what calls/imports the given symbol
 
-```bash
-# 1) Install deps
-npm install
+- **`graph_related`** - Find related symbols (neighbors)
+  - Input: `id` (symbol ID), `k` (neighbor count, default 10)
+  - Returns symbols that call or are called by the target
 
-# 2) Build a graph from the example code
-npm run ingest -- --target ./example
+- **`graph_impact_from_diff`** - Analyze change impact
+  - Input: `patch` (unified diff)
+  - Returns changed files, symbols, and impacted dependencies
 
-# 3) Run the MCP server (stdio)
-npm run dev:server
-```
+### Advanced Analysis
+- **`analyze_parallel_streams`** - Analyze parallel workstreams
+  - Input: `streams`, `context`
+  - Generates visual synthesis of parallel development activities
 
-You should see `code-graph` start and announce tools.
+## 🚀 Usage
 
----
+### Configuration
+Add to your MCP client configuration:
 
-## Use with Claude Desktop (macOS/Linux/Windows)
-
-Add an entry to your **Claude Desktop config** to register the MCP server via stdio.
-
-- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
-- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
-- Linux: `~/.config/Claude/claude_desktop_config.json`
-
-Use the included template and replace the absolute path to this folder:
-
-```jsonc
+```json
 {
   "mcpServers": {
-    "code-graph": {
-      "command": "node",
-      "args": ["/ABSOLUTE/PATH/TO/dist/mcp/server.js"],
-      "environment": {
-        "NABI_GRAPH_JSON": "/ABSOLUTE/PATH/TO/data/graph.json"
+    "codegraph": {
+      "command": "bun",
+      "args": ["/path/to/nabia/platform/codegraph-mcp/dist/mcp/server.js"],
+      "env": {
+        "NABI_GRAPH_JSON": "/Users/{user}/.local/state/nabi/codegraph/graphs/core/graph.json"
       }
     }
   }
 }
 ```
 
-Restart Claude Desktop. In a new chat, ask it to **connect to the `code-graph` MCP server** and try tools like:
+### Workflow
+1. **Index a codebase**: `graph_ingest(target="/path/to/code")`
+2. **Search for symbols**: `graph_resolve_symbol(q="AgentType")`
+3. **Analyze relationships**: `graph_references(id="symbol_id")`
+4. **Check impact**: `graph_impact_from_diff(patch="...")`
 
-- `graph.resolve_symbol` with `{ "q": "greet" }`
-- `graph.related` with a returned symbol `id`
-- `graph.impact_from_diff` with a pasted patch
+## 🔄 Integration with NABI CLI
 
-> **Note**: Clients differ in how they surface MCP tools. In Claude, you can view connected tools/resources in the session sidebar.
+This MCP server mirrors the functionality of `nabi repo` commands:
 
----
+| NABI CLI | MCP Tool | Purpose |
+|----------|----------|---------|
+| `repo analyze <path>` | `graph_ingest` | Index codebase |
+| `repo graph search <symbol>` | `graph_resolve_symbol` | Find symbols |
+| `repo graph references <symbol>` | `graph_references` | Find references |
+| `repo graph related <symbol>` | `graph_related` | Find related symbols |
 
-## Commands & scripts
+## 📊 Data Model
 
+### Symbol
+```typescript
+{
+  id: string;           // Unique identifier
+  kind: "class" | "function" | "method" | "variable" | "module";
+  name: string;         // Symbol name
+  file: string;         // Relative file path
+  range: {              // Source location
+    startLine: number;
+    startCol: number;
+    endLine: number;
+    endCol: number;
+  };
+  language: "python" | "typescript";
+}
+```
+
+### Edge (Relationship)
+```typescript
+{
+  src: string;          // Source symbol ID
+  type: "defines" | "call" | "import" | "member_of";
+  dst: string;          // Destination symbol ID
+}
+```
+
+## 🧪 Development
+
+### Prerequisites
+- **Node.js 20+**
+- **Python 3.10+** (for Python code analysis)
+- **Bun** (for running/building)
+
+### Setup
 ```bash
-# Dev server (TypeScript via tsx)
-npm run dev:server
-
-# Compile to dist/ (pure JS ESM)
-npm run build
-npm start  # runs the built server
-
-# Ingest (scan target directory and build ./data/graph.json)
-npm run ingest -- --target ./example
-npm run ingest -- --target /path/to/your/repo
-
-# Optional: re-run impact analysis from a diff file
-cat my.patch | npm run impact
+bun install
+bun run build
 ```
 
----
+### Testing
+```bash
+# Start dev server
+bun run dev:server
 
-## How ingestion works (tl;dr)
-
-- **TypeScript**: We use the TS compiler API to walk each file’s AST, collect symbols (functions/classes/methods/variables), calls, and imports. We also create a per-file **module symbol** as an anchor.
-- **Python**: A small `py/ingest_py.py` uses `ast` to do the same. It prints **NDJSON** on stdout which the Node orchestrator reads and merges.
-- **Edge resolution**: Calls are matched to definitions by name with a simple heuristic (prefer same-file symbols first, otherwise the first match). This is intentionally simple—enough to bootstrap your graph and make MCP queries useful.
-
-> Later, you can plug in **Tree‑sitter** or **SCIP** for deeper, cross-repo precision.
-
----
-
-## Data model
-
-```ts
-type Range = { startLine: number; startCol: number; endLine: number; endCol: number };
-type Symbol = {
-  id: string; kind: 'function'|'class'|'method'|'variable'|'module';
-  name: string; file: string; range: Range; language: 'typescript'|'python';
-  signature?: string; parentId?: string|null;
-};
-type EdgeType = 'defines'|'call'|'import'|'member_of';
-type Edge = { src: string; type: EdgeType; dst: string };
-type Graph = { symbols: Symbol[]; edges: Edge[] };
+# Test ingestion
+bun run ingest -- --target ./example
 ```
 
+## 🔒 Security & Performance
+
+### Security
+- **Path validation**: Prevents directory traversal attacks
+- **File access**: Only reads source files, no execution
+- **Resource limits**: Line range limits, reasonable timeouts
+
+### Performance
+- **Memory efficient**: Loads graphs into memory for fast queries
+- **Incremental**: Registry system supports multiple codebases
+- **Streaming**: Large results can be streamed via MCP
+
+## 🤝 Contributing
+
+### Adding Language Support
+1. Create analysis module in `src/ingest/`
+2. Implement AST walker for the language
+3. Extract symbols and edges following the data model
+4. Update ingestion orchestrator
+
+### Adding Analysis Tools
+1. Register new tool in `src/mcp/server.ts`
+2. Follow MCP tool schema with Zod validation
+3. Access loaded graph and indexes
+4. Return JSON-compatible results
+
+## 📋 Roadmap
+
+- [ ] Multi-language support (Rust, Go)
+- [ ] Cross-repository analysis
+- [ ] Semantic search with embeddings
+- [ ] Graph visualization integration
+- [ ] Incremental updates
+- [ ] SQLite backend for large graphs
+
 ---
 
-## Roadmap: where to take it
-
-- Add **SCIP ingestion** (scip-ts / scip-python) and merge edges alongside this AST path.
-- Swap JSON storage for **SQLite** and add indexes for large monorepos.
-- Add **structural rewrites/codemods** hooks and `graph.impact_from_diff` refinements (graph radius weighting, churn priors).
-- Expose a **search resource**: `graph://symbol?q=...` that streams snippets directly.
-
----
-
-## Troubleshooting
-
-- If the server prints “No graph loaded,” run `npm run ingest` and confirm `./data/graph.json` exists.
-- Windows path issues? Use absolute paths in the Claude config and wrap with quotes.
-- Python not found? Edit `PYTHON_BIN` in `src/ingest/make_graph.ts` to your interpreter path.
-
----
-
-**License**: MIT
+**Built for NABI**: This MCP server is designed specifically for the NABI ecosystem, providing agents with deep code understanding capabilities for kernel development and orchestration tasks.
