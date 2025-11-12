@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { execSync } from 'node:child_process';
 import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
@@ -13,17 +14,44 @@ type SymbolRec = {
 type EdgeType = 'defines'|'call'|'import'|'member_of';
 type EdgeRec = { src: string; type: EdgeType; dst: string };
 type Graph = { symbols: SymbolRec[]; edges: EdgeRec[] };
+type GraphRegistry = { graphs: Array<{ id: string; path: string; target: string; size: number; timestamp: string }> };
 
 const GRAPH_PATH = process.env.NABI_GRAPH_JSON || path.resolve('./data/graph.json');
 const ROOT = process.env.NABI_ROOT || process.cwd();
+const REGISTRY_DIR = path.resolve(process.env.HOME || '~', '.local/state/nabi/codegraph');
 
-function loadGraph(): Graph | null {
+function ensureRegistryDir() {
   try {
-    const txt = fs.readFileSync(GRAPH_PATH, 'utf8');
+    fs.mkdirSync(REGISTRY_DIR, { recursive: true });
+  } catch {
+    // Ignore if already exists
+  }
+}
+
+function loadRegistry(): GraphRegistry {
+  ensureRegistryDir();
+  const regPath = path.join(REGISTRY_DIR, 'registry.json');
+  try {
+    const txt = fs.readFileSync(regPath, 'utf8');
+    return JSON.parse(txt) as GraphRegistry;
+  } catch {
+    return { graphs: [] };
+  }
+}
+
+function saveRegistry(reg: GraphRegistry) {
+  ensureRegistryDir();
+  const regPath = path.join(REGISTRY_DIR, 'registry.json');
+  fs.writeFileSync(regPath, JSON.stringify(reg, null, 2), 'utf8');
+}
+
+function loadGraph(graphPath: string = GRAPH_PATH): Graph | null {
+  try {
+    const txt = fs.readFileSync(graphPath, 'utf8');
     const g = JSON.parse(txt) as Graph;
     return g;
   } catch (err) {
-    console.error(`[code-graph] Failed to load graph from ${GRAPH_PATH}:`, err instanceof Error ? err.message : String(err));
+    console.error(`[code-graph] Failed to load graph from ${graphPath}:`, err instanceof Error ? err.message : String(err));
     return null;
   }
 }
@@ -54,7 +82,19 @@ function scoreName(q: string, name: string) {
 }
 
 let graph = loadGraph();
-const idx = graph ? buildIndexes(graph) : null;
+let idx = graph ? buildIndexes(graph) : null;
+
+// Function to dynamically reload a graph
+function setActiveGraph(graphPath: string): string {
+  const newGraph = loadGraph(graphPath);
+  if (!newGraph) {
+    return `Failed to load graph from ${graphPath}`;
+  }
+  graph = newGraph;
+  idx = buildIndexes(newGraph);
+  console.error(`[code-graph] Switched to graph: ${graphPath} (${newGraph.symbols.length} symbols)`);
+  return `Switched to graph: ${graphPath} (${newGraph.symbols.length} symbols, ${newGraph.edges.length} edges)`;
+}
 
 const server = new McpServer({ name: 'code-graph', version: '0.1.0' });
 
@@ -212,6 +252,78 @@ server.registerTool(
       impactedFiles: [...impactedFiles]
     };
     return { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }] };
+  }
+);
+
+// tool: ingest (trigger ingestion from within agent)
+server.registerTool(
+  'graph_ingest',
+  { description: 'Trigger code ingestion for a target directory and register the graph', inputSchema: { target: z.string().min(1).max(500), id: z.string().min(1).max(64).optional() } },
+  async ({ target, id }) => {
+    try {
+      const targetPath = path.resolve(target.replace(/^~/, process.env.HOME || '/root'));
+
+      // Validate target exists
+      if (!fs.existsSync(targetPath)) {
+        return { content: [{ type: 'text', text: `Error: target directory does not exist: ${targetPath}` }] };
+      }
+
+      // Generate ID if not provided
+      const graphId = id || path.basename(targetPath);
+
+      // Create output directory
+      const outputDir = path.join(REGISTRY_DIR, 'graphs', graphId);
+      fs.mkdirSync(outputDir, { recursive: true });
+
+      // Spawn ingestion via bun (assumes codegraph-mcp is available)
+      const ingestPath = path.resolve(__dirname, '../ingest/make_graph.ts');
+      const cmd = `bun run "${ingestPath}" --target "${targetPath}" --output "${outputDir}" 2>&1`;
+
+      console.error(`[code-graph] Running ingest: ${cmd}`);
+      let output = '';
+      try {
+        output = execSync(cmd, { encoding: 'utf8', timeout: 300000, stdio: ['ignore', 'pipe', 'pipe'] });
+      } catch (execErr: any) {
+        // Capture stdout and stderr from the failed process
+        const stdout = execErr.stdout ? execErr.stdout.toString('utf8') : '';
+        const stderr = execErr.stderr ? execErr.stderr.toString('utf8') : '';
+        const fullOutput = stdout + stderr;
+        return { content: [{ type: 'text', text: `Ingestion failed!\n\nCommand: ${cmd}\n\nOutput:\n${fullOutput}\n\nError: ${execErr.message}` }] };
+      }
+
+      // Load the generated graph to get stats
+      const graphFile = path.join(outputDir, 'graph.json');
+      const newGraph = loadGraph(graphFile);
+      if (!newGraph) {
+        return { content: [{ type: 'text', text: `Ingestion completed but failed to load result graph` }] };
+      }
+
+      // Register in the registry
+      const reg = loadRegistry();
+      const existing = reg.graphs.findIndex(g => g.id === graphId);
+      const entry = {
+        id: graphId,
+        path: graphFile,
+        target: targetPath,
+        size: newGraph.symbols.length,
+        timestamp: new Date().toISOString()
+      };
+
+      if (existing >= 0) {
+        reg.graphs[existing] = entry;
+      } else {
+        reg.graphs.push(entry);
+      }
+      saveRegistry(reg);
+
+      // Automatically switch to the new graph
+      const switchResult = setActiveGraph(graphFile);
+
+      return { content: [{ type: 'text', text: `Ingestion completed!\n\n${output}\n\nStats: ${newGraph.symbols.length} symbols, ${newGraph.edges.length} edges\n\nRegistry: ${switchResult}` }] };
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      return { content: [{ type: 'text', text: `Ingestion failed: ${errorMsg}` }] };
+    }
   }
 );
 
