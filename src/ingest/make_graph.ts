@@ -9,7 +9,7 @@ import { spawn } from 'node:child_process';
 
 const args = minimist(process.argv.slice(2));
 const target = path.resolve(String(args.target ?? process.env.TARGET ?? './example'));
-const outDir = path.resolve('./data');
+const outDir = path.resolve(String(args.output ?? process.env.OUTPUT ?? './data'));
 const outJson = path.join(outDir, 'graph.json');
 const PYTHON_BIN = process.env.PYTHON_BIN || 'python3';
 
