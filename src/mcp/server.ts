@@ -135,7 +135,7 @@ server.registerResource(
       const lines = text.split('\n').slice(s - 1, e).join('\n');
       return { contents: [{ uri: uri.href, text: lines }] };
     } catch (err) {
-      return { contents: [{ uri: uri, text: `Error: ${err instanceof Error ? err.message : 'Unknown error'}` }] };
+      return { contents: [{ uri: uri.href, text: `Error: ${err instanceof Error ? err.message : 'Unknown error'}` }] };
     }
   }
 );
@@ -154,7 +154,8 @@ server.registerTool(
       if (score > 0) scored.push({ id: s.id, score });
     }
     scored.sort((a,b) => b.score - a.score);
-    const top = scored.slice(0, 20).map(x => idx.id2sym.get(x.id)).filter((x): x is SymbolRec => x !== undefined);
+    const currentIdx = idx; // Capture for closure
+    const top = scored.slice(0, 20).map(x => currentIdx.id2sym.get(x.id)).filter((x): x is SymbolRec => x !== undefined);
     return { content: [{ type: 'text', text: JSON.stringify(top, null, 2) }] };
   }
 );
@@ -165,11 +166,12 @@ server.registerTool(
   { description: 'Inbound edges (who calls/imports this symbol)', inputSchema: { id: z.string().min(1) } },
   async ({ id }) => {
     if (!graph || !idx) return { content: [{ type: 'text', text: 'No graph loaded. Run: npm run ingest' }] };
-    const inbound = (idx.inEdges.get(id) || []).filter(e => e.type === 'call' || e.type === 'import');
+    const currentIdx = idx; // Capture for closure
+    const inbound = (currentIdx.inEdges.get(id) || []).filter(e => e.type === 'call' || e.type === 'import');
     const rows = inbound
       .map(e => {
-        const src = idx.id2sym.get(e.src);
-        const dst = idx.id2sym.get(e.dst);
+        const src = currentIdx.id2sym.get(e.src);
+        const dst = currentIdx.id2sym.get(e.dst);
         return src && dst ? { edge: e, src, dst } : null;
       })
       .filter((x): x is NonNullable<typeof x> => x !== null);
@@ -183,13 +185,14 @@ server.registerTool(
   { description: 'Nearest neighbors by call/import edges', inputSchema: { id: z.string().min(1), k: z.number().int().min(1).max(100).default(10) } },
   async ({ id, k }) => {
     if (!graph || !idx) return { content: [{ type: 'text', text: 'No graph loaded. Run: npm run ingest' }] };
-    const outs = (idx.outEdges.get(id) || []).filter(e => e.type === 'call' || e.type === 'import');
-    const inb  = (idx.inEdges.get(id)  || []).filter(e => e.type === 'call' || e.type === 'import');
+    const currentIdx = idx; // Capture for closure
+    const outs = (currentIdx.outEdges.get(id) || []).filter(e => e.type === 'call' || e.type === 'import');
+    const inb  = (currentIdx.inEdges.get(id)  || []).filter(e => e.type === 'call' || e.type === 'import');
     const neigh = [...outs, ...inb]
       .slice(0, k)
       .map(e => {
-        const src = idx.id2sym.get(e.src);
-        const dst = idx.id2sym.get(e.dst);
+        const src = currentIdx.id2sym.get(e.src);
+        const dst = currentIdx.id2sym.get(e.dst);
         return src && dst ? { edge: e, src, dst } : null;
       })
       .filter((x): x is NonNullable<typeof x> => x !== null);
@@ -228,10 +231,11 @@ server.registerTool(
     const changedSymbols = graph.symbols.filter(s => changedFileSet.has(s.file));
 
     // neighbors via one hop
+    const currentIdx = idx; // Capture for closure
     const impacted = new Set<string>();
     for (const s of changedSymbols) {
-      const outs = idx.outEdges.get(s.id) || [];
-      const ins  = idx.inEdges.get(s.id) || [];
+      const outs = currentIdx.outEdges.get(s.id) || [];
+      const ins  = currentIdx.inEdges.get(s.id) || [];
       for (const e of outs.concat(ins)) {
         if (e.type === 'call' || e.type === 'import') {
           impacted.add(e.src); impacted.add(e.dst);
@@ -242,7 +246,7 @@ server.registerTool(
     // map to files
     const impactedFiles = new Set<string>();
     for (const id of impacted) {
-      const sym = idx.id2sym.get(id);
+      const sym = currentIdx.id2sym.get(id);
       if (sym) impactedFiles.add(sym.file);
     }
 

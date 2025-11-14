@@ -52,6 +52,7 @@ async function ingestPython(root: string): Promise<{ symbols: SymbolRec[]; edges
     const edges: EdgeRec[] = [];
     const calls: { name: string; file: string; modId: string }[] = [];
     const nameIndexPerFile = new Map<string, Record<string, any[]>>();
+    let stderrBuf = '';
 
     let buf = '';
     proc.stdout.on('data', (d) => {
@@ -69,10 +70,16 @@ async function ingestPython(root: string): Promise<{ symbols: SymbolRec[]; edges
         } catch {}
       }
     });
-    proc.on('error', reject);
+    proc.stderr.on('data', (d) => {
+      stderrBuf += d.toString('utf8');
+    });
+    proc.on('error', (err) => {
+      reject(new Error(`Python ingest process error: ${err.message}`));
+    });
     proc.on('close', (code) => {
       if (code !== 0) {
-        return reject(new Error('python ingest failed with code ' + code));
+        const errorMsg = stderrBuf.trim() || 'Unknown error';
+        return reject(new Error(`Python ingest failed with exit code ${code}\n${errorMsg}`));
       }
       resolve({ symbols, edges, calls });
     });
@@ -83,18 +90,33 @@ async function main() {
   console.log('[ingest] target:', target);
   fs.mkdirSync(outDir, { recursive: true });
 
+  let tsGraph: Graph = { symbols: [], edges: [] };
+  let pyResult: { symbols: SymbolRec[]; edges: EdgeRec[]; calls: { name: string; file: string; modId: string }[] } = { symbols: [], edges: [], calls: [] };
+
   // --- TypeScript ingestion
-  const tsFiles = listFiles(target, ['.ts', '.tsx']);
-  const tsGraph = ingestTypeScriptFiles(tsFiles, target);
-  console.log(`[ingest] TS files: ${tsFiles.length}, symbols: ${tsGraph.symbols.length}, edges: ${tsGraph.edges.length}`);
+  try {
+    const tsFiles = listFiles(target, ['.ts', '.tsx']);
+    tsGraph = ingestTypeScriptFiles(tsFiles, target);
+    console.log(`[ingest] TS files: ${tsFiles.length}, symbols: ${tsGraph.symbols.length}, edges: ${tsGraph.edges.length}`);
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    console.error(`[ingest] TypeScript ingestion failed: ${errorMsg}`);
+    // Continue with Python ingestion even if TS fails
+  }
 
   // --- Python ingestion
-  const py = await ingestPython(target);
-  console.log(`[ingest] PY symbols: ${py.symbols.length}, edges: ${py.edges.length}, calls: ${py.calls.length}`);
+  try {
+    pyResult = await ingestPython(target);
+    console.log(`[ingest] PY symbols: ${pyResult.symbols.length}, edges: ${pyResult.edges.length}, calls: ${pyResult.calls.length}`);
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    console.error(`[ingest] Python ingestion failed: ${errorMsg}`);
+    // Continue with merging even if Python fails
+  }
 
   // Merge
-  let symbols: SymbolRec[] = [...tsGraph.symbols, ...py.symbols];
-  let edges: EdgeRec[] = [...tsGraph.edges, ...py.edges];
+  let symbols: SymbolRec[] = [...tsGraph.symbols, ...pyResult.symbols];
+  let edges: EdgeRec[] = [...tsGraph.edges, ...pyResult.edges];
 
   // Name index for naive resolution
   const byName = new Map<string, SymbolRec[]>();
@@ -104,7 +126,7 @@ async function main() {
   }
 
   // Resolve Python calls by name
-  for (const c of py.calls) {
+  for (const c of pyResult.calls) {
     const arr = byName.get(c.name);
     if (arr && arr.length) {
       const sameFile = arr.find(x => x.file === c.file);
@@ -120,6 +142,7 @@ async function main() {
   const graph: Graph = { symbols, edges };
   fs.writeFileSync(outJson, JSON.stringify(graph, null, 2), 'utf8');
   console.log('[ingest] wrote', outJson);
+  console.log(`[ingest] Final stats: ${symbols.length} symbols, ${edges.length} edges`);
 }
 
 main().catch(err => {
