@@ -18,6 +18,12 @@ This MCP server provides programmatic access to code analysis capabilities, allo
 - **Registry**: `~/.local/state/nabi/codegraph/registry.json`
 - **XDG compliant**: Follows NABI state directory conventions
 
+### Transport Independence
+- **Unified State**: All transport mechanisms (stdio, SSE, Docker) share identical underlying data
+- **Seamless Switching**: Switch between transports without losing graphs, registry, or active state
+- **Persistent Storage**: Data survives server restarts, transport changes, and deployments
+- **Multi-Session Support**: SSE server enables efficient sharing across multiple concurrent sessions
+
 ### Supported Languages
 - **Python** (primary focus for NABI kernel)
 - **TypeScript** (for tooling and web components)
@@ -74,8 +80,10 @@ This MCP server provides programmatic access to code analysis capabilities, allo
 ## 🚀 Usage
 
 ### Configuration
-Add to your MCP client configuration:
 
+Choose your preferred transport mechanism:
+
+#### Option 1: Direct MCP (stdio) - Single Session
 ```json
 {
   "mcpServers": {
@@ -88,6 +96,24 @@ Add to your MCP client configuration:
     }
   }
 }
+```
+
+#### Option 2: SSE Server - Multi-Session
+```json
+{
+  "mcpServers": {
+    "codegraph": {
+      "command": "bunx",
+      "args": ["-y", "mcp-remote", "http://localhost:8050/sse"]
+    }
+  }
+}
+```
+
+**Start SSE server:**
+```bash
+cd /path/to/nabia/platform/codegraph-mcp
+uv run codegraph-sse
 ```
 
 ### Workflow
