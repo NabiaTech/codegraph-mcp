@@ -18,7 +18,7 @@ Multiple Claude Sessions (Ephemeral)
     codegraph-mcp (Shared MCP Instance)
     Graph loaded once in memory (~5MB)
            ↓
-    ~/.local/state/nabi/codegraph/ (Mounted Volume)
+    $XDG_STATE_HOME/nabi/codegraph/ (~/.local/state/nabi/codegraph/) (Mounted Volume)
     ├── graphs/        (persistent JSON)
     ├── indexes/       (computed, regenerable)
     ├── cache/         (ephemeral)
@@ -40,7 +40,7 @@ Multiple Claude Sessions (Ephemeral)
 - Performance: ~1000 msg/sec, <50ms latency
 
 #### Pattern 2: Mounted Volumes (SurrealDB template)
-- ✅ State in `~/.local/state/nabi/codegraph/`
+- ✅ State in `$XDG_STATE_HOME/nabi/codegraph/` (~/.local/state/nabi/codegraph/)
 - ✅ Persistent across service restarts
 - ✅ Visible on host filesystem (debuggable)
 - ✅ Syncthing can backup to RPi
@@ -115,7 +115,7 @@ Session Ends
   "protocol": "http+sse",
   "transport": "sse",
   "mcp_server": "codegraph-mcp",
-  "storage": "~/.local/state/nabi/codegraph",
+  "storage": "$XDG_STATE_HOME/nabi/codegraph",
   "federation_enabled": true,
   "loki_url": "http://localhost:3100",
   "status": "active"
@@ -126,17 +126,17 @@ Session Ends
 
 ```
 Configuration (Source of Truth):
-  ~/.config/nabi/services/codegraph.toml
+  $XDG_CONFIG_HOME/nabi/services/codegraph.toml (~/.config/nabi/services/codegraph.toml)
 
 Runtime State (Persistent):
-  ~/.local/state/nabi/codegraph/
+  $XDG_STATE_HOME/nabi/codegraph/ (~/.local/state/nabi/codegraph/)
   ├── graphs/              (persistent graph JSONs)
   ├── indexes/             (computed, regenerable)
   ├── cache/               (ephemeral, clearable)
   └── logs/                (audit trail, NDJSON)
 
 Ephemeral Cache:
-  ~/.cache/nabi/codegraph/
+  $XDG_CACHE_HOME/nabi/codegraph/ (~/.cache/nabi/codegraph/)
   ├── build-artifacts/
   └── temp-indexes/
 
@@ -167,10 +167,10 @@ Syncthing-Synced (Backup):
 ## Critical Integration Points
 
 ### Port Registry
-Add codegraph-sse (port 8050) to `/Users/tryk/.local/state/nabi/port-registry.json`
+Add codegraph-sse (port 8050) to `$XDG_STATE_HOME/nabi/port-registry.json` (~/.local/state/nabi/port-registry.json)
 
 ### Agent Specs
-Create `~/.config/nabi/agents/codegraph-enabled.toml` with:
+Create `$XDG_CONFIG_HOME/nabi/agents/codegraph-enabled.toml` (~/.config/nabi/agents/codegraph-enabled.toml) with:
 - `capabilities = ["codegraph", "code-analysis"]`
 - `sse_url = "http://127.0.0.1:8050/sse"`
 - `memory_layers = ["L1", "L2", "L3"]`
@@ -249,4 +249,3 @@ Your system follows **five pillars of noble architecture** (from NORTH_STAR.md):
 **Status**: Ready for implementation
 
 **Next Step**: Execute Phase 1 (SSE wrapper based on memchain-sse pattern)
-

@@ -22,7 +22,7 @@ Claude Session 1, 2, 3, ...
          ↓ (MCP routing)
     codegraph-mcp (Shared instance)
          ↓ (Memory: ~5MB, loaded once)
-    ~/.local/state/nabi/codegraph/
+    $XDG_STATE_HOME/nabi/codegraph/ (~/.local/state/nabi/codegraph/)
     ├── graphs/json
     ├── indexes/
     ├── cache/
@@ -42,7 +42,7 @@ Claude Session 1, 2, 3, ...
   "protocol": "http+sse",
   "transport": "sse",
   "mcp_server": "codegraph-mcp",
-  "storage": "~/.local/state/nabi/codegraph",
+  "storage": "$XDG_STATE_HOME/nabi/codegraph",
   "federation_enabled": true
 }
 ```
@@ -77,11 +77,11 @@ session_scoped_cleanup = true
 
 ```python
 # Every operation should emit to Loki
-emit_loki("codegraph.ingest_started", 
+emit_loki("codegraph.ingest_started",
   {"agent_id": "...", "target": "...", "timestamp": "..."})
-emit_loki("codegraph.ingest_completed", 
+emit_loki("codegraph.ingest_completed",
   {"agent_id": "...", "symbol_count": 150, "duration_seconds": 2.5, ...})
-emit_loki("codegraph.query_resolved", 
+emit_loki("codegraph.query_resolved",
   {"agent_id": "...", "query": "handle*", "result_count": 2, "latency_ms": 12, ...})
 ```
 
@@ -95,7 +95,7 @@ emit_loki("codegraph.query_resolved",
 - Agent communication, task claims
 - Auto-cleanup at session end
 
-### L2 (Knowledge - Task-Scoped)  
+### L2 (Knowledge - Task-Scoped)
 - Currently: ~/Sync/memory/memory.json (150+ entities)
 - Planned: SurrealDB at port 8284
 - **Codegraph**: Store analysis findings here with session_id
@@ -244,4 +244,3 @@ emit_loki("codegraph.query_resolved",
 
 **Status**: Ready for Phase 1 implementation
 **Next**: Build SSE wrapper (Week 1)
-

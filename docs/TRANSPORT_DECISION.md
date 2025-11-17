@@ -114,7 +114,7 @@ The codegraph MCP server needs to support multiple concurrent agent sessions whi
 - Cursor: Direct HTTP connection to `http://localhost:8050/sse`
 
 **State Management**:
-- Global graph registry in `~/.local/state/nabi/codegraph/registry.json`
+- Global graph registry in `$XDG_STATE_HOME/nabi/codegraph/registry.json` (falls back to `~/.local/state/nabi/codegraph/registry.json`)
 - Shared active graph across all sessions
 - Persistent graph storage in XDG-compliant directories
 

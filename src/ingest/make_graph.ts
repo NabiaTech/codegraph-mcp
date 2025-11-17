@@ -12,6 +12,7 @@ const target = path.resolve(String(args.target ?? process.env.TARGET ?? './examp
 const outDir = path.resolve(String(args.output ?? process.env.GRAPH_OUTPUT ?? './data'));
 const outJson = path.join(outDir, 'graph.json');
 const PYTHON_BIN = process.env.PYTHON_BIN || 'python3';
+const RUST_BIN = process.env.RUST_BIN || path.resolve('./rs/target/release/ingest_rs');
 
 // Print usage info
 if (args.help || args.h) {
@@ -27,6 +28,7 @@ Environment variables:
   TARGET             Override default target
   GRAPH_OUTPUT       Override default output directory
   PYTHON_BIN         Python interpreter (default: python3)
+  RUST_BIN           Rust ingestion binary path (default: ./rs/target/release/ingest_rs)
 
 Examples:
   bun run ingest -- --target ~/nabia/memchain
@@ -86,12 +88,54 @@ async function ingestPython(root: string): Promise<{ symbols: SymbolRec[]; edges
   });
 }
 
+async function ingestRust(root: string): Promise<{ symbols: SymbolRec[]; edges: EdgeRec[]; calls: { name: string; file: string; modId: string }[]; }> {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(RUST_BIN, [root], { stdio: ['ignore', 'pipe', 'pipe'] });
+    const symbols: SymbolRec[] = [];
+    const edges: EdgeRec[] = [];
+    const calls: { name: string; file: string; modId: string }[] = [];
+    const nameIndexPerFile = new Map<string, Record<string, any[]>>();
+    let stderrBuf = '';
+
+    let buf = '';
+    proc.stdout.on('data', (d) => {
+      buf += d.toString('utf8');
+      let idx;
+      while ((idx = buf.indexOf('\n')) !== -1) {
+        const line = buf.slice(0, idx); buf = buf.slice(idx + 1);
+        if (!line.trim()) continue;
+        try {
+          const rec = JSON.parse(line);
+          if (rec.type === 'symbol') symbols.push(rec.symbol);
+          else if (rec.type === 'edge') edges.push(rec.edge);
+          else if (rec.type === 'call') calls.push({ name: rec.calleeName, file: rec.file, modId: rec.modId });
+          else if (rec.type === 'name_index') nameIndexPerFile.set(rec.file, rec.index);
+        } catch {}
+      }
+    });
+    proc.stderr.on('data', (d) => {
+      stderrBuf += d.toString('utf8');
+    });
+    proc.on('error', (err) => {
+      reject(new Error(`Rust ingest process error: ${err.message}`));
+    });
+    proc.on('close', (code) => {
+      if (code !== 0) {
+        const errorMsg = stderrBuf.trim() || 'Unknown error';
+        return reject(new Error(`Rust ingest failed with exit code ${code}\n${errorMsg}`));
+      }
+      resolve({ symbols, edges, calls });
+    });
+  });
+}
+
 async function main() {
   console.log('[ingest] target:', target);
   fs.mkdirSync(outDir, { recursive: true });
 
   let tsGraph: Graph = { symbols: [], edges: [] };
   let pyResult: { symbols: SymbolRec[]; edges: EdgeRec[]; calls: { name: string; file: string; modId: string }[] } = { symbols: [], edges: [], calls: [] };
+  let rsResult: { symbols: SymbolRec[]; edges: EdgeRec[]; calls: { name: string; file: string; modId: string }[] } = { symbols: [], edges: [], calls: [] };
 
   // --- TypeScript ingestion
   try {
@@ -114,9 +158,19 @@ async function main() {
     // Continue with merging even if Python fails
   }
 
+  // --- Rust ingestion
+  try {
+    rsResult = await ingestRust(target);
+    console.log(`[ingest] RS symbols: ${rsResult.symbols.length}, edges: ${rsResult.edges.length}, calls: ${rsResult.calls.length}`);
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    console.error(`[ingest] Rust ingestion failed: ${errorMsg}`);
+    // Continue with merging even if Rust fails
+  }
+
   // Merge
-  let symbols: SymbolRec[] = [...tsGraph.symbols, ...pyResult.symbols];
-  let edges: EdgeRec[] = [...tsGraph.edges, ...pyResult.edges];
+  let symbols: SymbolRec[] = [...tsGraph.symbols, ...pyResult.symbols, ...rsResult.symbols];
+  let edges: EdgeRec[] = [...tsGraph.edges, ...pyResult.edges, ...rsResult.edges];
 
   // Name index for naive resolution
   const byName = new Map<string, SymbolRec[]>();
@@ -125,8 +179,8 @@ async function main() {
     arr.push(s); byName.set(s.name, arr);
   }
 
-  // Resolve Python calls by name
-  for (const c of pyResult.calls) {
+  // Resolve Python and Rust calls by name
+  for (const c of [...pyResult.calls, ...rsResult.calls]) {
     const arr = byName.get(c.name);
     if (arr && arr.length) {
       const sameFile = arr.find(x => x.file === c.file);

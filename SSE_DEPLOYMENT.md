@@ -45,7 +45,7 @@ Total: 5 MB efficient! Scales to 8+ sessions
 │       ↓                                                      │
 │  ┌──────────────────────────────────────┐                 │
 │  │  Shared State (Mounted Volume)        │                 │
-│  │  ~/.local/state/nabi/codegraph/       │                 │
+│  │  $XDG_STATE_HOME/nabi/codegraph/       │                 │
 │  │  ├── registry.json (graph metadata)   │                 │
 │  │  ├── graphs/ (indexed codebases)      │                 │
 │  │  ├── cache/ (computed indexes)        │                 │
@@ -180,7 +180,7 @@ GET /metrics
 ### Host Filesystem
 
 ```
-~/.local/state/nabi/codegraph/
+$XDG_STATE_HOME/nabi/codegraph/ (~/.local/state/nabi/codegraph/)
 ├── registry.json              # Graph catalog (persistent)
 ├── graphs/
 │   ├── memchain/

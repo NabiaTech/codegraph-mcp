@@ -7,6 +7,7 @@
   "scripts": {
     "dev:server": "tsx src/mcp/server.ts",
     "build": "tsc --project tsconfig.json",
+    "build:rust": "cd rs && cargo build --release",
     "start": "node dist/mcp/server.js",
     "ingest": "tsx src/ingest/make_graph.ts",
     "impact": "tsx src/scripts/diff_impact.ts"

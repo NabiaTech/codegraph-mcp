@@ -14,8 +14,8 @@ This MCP server provides programmatic access to code analysis capabilities, allo
 ## 🏗️ Architecture
 
 ### Data Storage
-- **Graphs stored in**: `~/.local/state/nabi/codegraph/graphs/{id}/graph.json`
-- **Registry**: `~/.local/state/nabi/codegraph/registry.json`
+- **Graphs stored in**: `$XDG_STATE_HOME/nabi/codegraph/graphs/{id}/graph.json` (falls back to `~/.local/state/nabi/codegraph/graphs/{id}/graph.json`)
+- **Registry**: `$XDG_STATE_HOME/nabi/codegraph/registry.json` (falls back to `~/.local/state/nabi/codegraph/registry.json`)
 - **XDG compliant**: Follows NABI state directory conventions
 
 ### Transport Independence
@@ -27,7 +27,8 @@ This MCP server provides programmatic access to code analysis capabilities, allo
 ### Supported Languages
 - **Python** (primary focus for NABI kernel)
 - **TypeScript** (for tooling and web components)
-- **Future**: Rust, Go, and other languages
+- **Rust** (for high-performance components)
+- **Future**: Go, and other languages
 
 ### MCP Tools
 - **`graph.resolve_symbol({ q })`** → fuzzy lookup of symbols by name
@@ -176,12 +177,14 @@ This MCP server mirrors the functionality of `nabi repo` commands:
 ### Prerequisites
 - **Node.js 20+**
 - **Python 3.10+** (for Python code analysis)
+- **Rust 1.70+** (for Rust code analysis)
 - **Bun** (for running/building)
 
 ### Setup
 ```bash
 bun install
 bun run build
+bun run build:rust
 ```
 
 ### Testing
