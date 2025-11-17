@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 # Minimal Python ingestion: walk .py files, parse via 'ast', emit NDJSON for symbols and edges
 
-import os, sys, ast, json, hashlib
+import os
+import sys
+import ast
+import json
+import hashlib
 
 def make_id(parts):
     h = hashlib.sha1()
@@ -25,8 +29,10 @@ def emit(obj):
 
 def ingest_dir(root):
     for dirpath, dirnames, filenames in os.walk(root):
-        if 'node_modules' in dirnames: dirnames.remove('node_modules')
-        if '.git' in dirnames: dirnames.remove('.git')
+        if 'node_modules' in dirnames:
+            dirnames.remove('node_modules')
+        if '.git' in dirnames:
+            dirnames.remove('.git')
         for fn in filenames:
             if fn.endswith('.py'):
                 path = os.path.join(dirpath, fn)
