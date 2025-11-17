@@ -6,7 +6,7 @@
   "license": "MIT",
   "scripts": {
     "dev:server": "tsx src/mcp/server.ts",
-    "build": "tsc --project tsconfig.json && cp src/mcp/server.js dist/mcp/",
+    "build": "tsc --project tsconfig.json",
     "start": "node dist/mcp/server.js",
     "ingest": "tsx src/ingest/make_graph.ts",
     "impact": "tsx src/scripts/diff_impact.ts"

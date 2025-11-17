@@ -372,7 +372,7 @@ server.registerTool(
       fs.mkdirSync(outputDir, { recursive: true });
 
       // Spawn ingestion via bun (assumes codegraph-mcp is available)
-      const ingestPath = path.resolve(__dirname, '../ingest/make_graph.ts');
+      const ingestPath = path.resolve(__dirname, '../ingest/make_graph.js');
       const cmd = `bun run "${ingestPath}" --target "${targetPath}" --output "${outputDir}" 2>&1`;
 
       console.error(`[code-graph] Running ingest: ${cmd}`);
