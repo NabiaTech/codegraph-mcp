@@ -351,6 +351,94 @@ server.registerTool(
   }
 );
 
+// tool: check_repo (basic repository compliance check)
+server.registerTool(
+  'graph_check_repo',
+  { description: 'Check repository for basic compliance issues (hardcoded paths, large files)', inputSchema: { target: z.string().min(1).max(500) } },
+  async ({ target }) => {
+    try {
+      const targetPath = path.resolve(target.replace(/^~/, process.env.HOME || '/root'));
+
+      // Validate target exists
+      if (!fs.existsSync(targetPath)) {
+        return { content: [{ type: 'text', text: `Error: target directory does not exist: ${targetPath}` }] };
+      }
+
+      const issues: string[] = [];
+      let fileCount = 0;
+      let totalSize = 0;
+
+      // Simple recursive file scan
+      function scanDir(dirPath: string, relPath = '') {
+        try {
+          const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+
+          for (const entry of entries) {
+            const fullPath = path.join(dirPath, entry.name);
+            const currentRelPath = relPath ? path.join(relPath, entry.name) : entry.name;
+
+            if (entry.isDirectory()) {
+              // Skip common directories
+              if (['node_modules', '.git', '__pycache__', 'target', 'dist', '.next'].includes(entry.name)) {
+                continue;
+              }
+              scanDir(fullPath, currentRelPath);
+            } else if (entry.isFile()) {
+              fileCount++;
+              const stats = fs.statSync(fullPath);
+              totalSize += stats.size;
+
+              // Check for hardcoded paths
+              if (stats.size < 1024 * 1024) { // Only check smaller files
+                try {
+                  const content = fs.readFileSync(fullPath, 'utf8');
+                  const hardcodedPatterns = [
+                    /\/Users\/[^/]+/g,
+                    /\/home\/[^/]+/g,
+                    /\/usr\/local/g,
+                    /\/opt\/[^/]+/g
+                  ];
+
+                  for (const pattern of hardcodedPatterns) {
+                    const matches = content.match(pattern);
+                    if (matches) {
+                      issues.push(`Hardcoded path in ${currentRelPath}: ${matches.slice(0, 3).join(', ')}`);
+                    }
+                  }
+                } catch {
+                  // Skip binary files
+                }
+              }
+
+              // Check for large files
+              if (stats.size > 100 * 1024 * 1024) { // 100MB
+                issues.push(`Large file: ${currentRelPath} (${(stats.size / 1024 / 1024).toFixed(1)}MB)`);
+              }
+            }
+          }
+        } catch (err) {
+          issues.push(`Error scanning ${relPath}: ${err}`);
+        }
+      }
+
+      scanDir(targetPath);
+
+      const result = {
+        target: targetPath,
+        files_scanned: fileCount,
+        total_size_mb: (totalSize / 1024 / 1024).toFixed(2),
+        issues_found: issues.length,
+        issues: issues.slice(0, 50) // Limit output
+      };
+
+      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      return { content: [{ type: 'text', text: `Check failed: ${errorMsg}` }] };
+    }
+  }
+);
+
 // tool: ingest (trigger ingestion from within agent)
 server.registerTool(
   'graph_ingest',

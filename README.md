@@ -42,6 +42,12 @@ This MCP server provides programmatic access to code analysis capabilities, allo
 
 ## 🛠️ MCP Tools
 
+### Repository Analysis
+- **`graph_check_repo`** - Check repository for compliance issues
+  - Input: `target` (directory path)
+  - Scans for hardcoded paths, large files, and basic issues
+  - Returns summary of files scanned and issues found
+
 ### Graph Management
 - **`graph_ingest`** - Index a codebase and register the graph
   - Input: `target` (directory path), optional `id`
@@ -128,10 +134,14 @@ This MCP server mirrors the functionality of `nabi repo` commands:
 
 | NABI CLI | MCP Tool | Purpose |
 |----------|----------|---------|
+| `repo check <path>` | `graph_check_repo` | Repository compliance |
 | `repo analyze <path>` | `graph_ingest` | Index codebase |
 | `repo graph search <symbol>` | `graph_resolve_symbol` | Find symbols |
 | `repo graph references <symbol>` | `graph_references` | Find references |
 | `repo graph related <symbol>` | `graph_related` | Find related symbols |
+| | `graph_impact_from_diff` | Change impact analysis |
+| | `graph_list_available` | List indexed graphs |
+| | `graph_set_active` | Switch active graph |
 
 ## 📊 Data Model
 
